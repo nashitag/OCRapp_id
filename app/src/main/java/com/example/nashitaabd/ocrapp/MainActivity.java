@@ -1,19 +1,14 @@
 package com.example.nashitaabd.ocrapp;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.pm.PackageManager;
-import androidx.annotation.NonNull;
+
 import androidx.appcompat.app.AlertDialog;
-import androidx.core.app.ActivityCompat;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 
-import android.database.Cursor;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Bundle;
@@ -21,17 +16,12 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.util.SparseArray;
-import android.view.Menu;
-import android.view.SurfaceHolder;
-import android.view.SurfaceView;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.google.android.gms.vision.CameraSource;
-import com.google.android.gms.vision.Detector;
 import com.google.android.gms.vision.Frame;
 import com.google.android.gms.vision.text.TextBlock;
 import com.google.android.gms.vision.text.TextRecognizer;
@@ -47,11 +37,8 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.net.URI;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
@@ -61,43 +48,41 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
 
 
-    private Button btn;
-    private ImageView imageview;
+    private Button getImageBtn;
+    private ImageView imageView;
     private static final String IMAGE_DIRECTORY = "/SharedFolder";
-    private int GALLERY = 1, CAMERA = 2;
+    private int GALLERY_REQUEST_CODE = 1, CAMERA_REQUEST_CODE = 2;
     private Button convertBtn;
-    private TextView textview;
+    private TextView textView;
+    String mCurrentPhotoPath; //photo path to store new image URI taken by camera
+    String full_text; // final string with all the text in the image
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        Log.w("path", String.valueOf(this.getExternalFilesDir(Environment.getExternalStorageDirectory() + IMAGE_DIRECTORY)));
-        requestMultiplePermissions();
+        requestMultiplePermissions(); //Request for all permissions
 
-        btn = (Button) findViewById(R.id.btn);
-        imageview = (ImageView) findViewById(R.id.iv);
-        convertBtn = (Button) findViewById(R.id.convertbutton);
-        textview = (TextView) findViewById(R.id.textview);
+        getImageBtn = (Button) findViewById(R.id.get_image_button);
+        imageView = (ImageView) findViewById(R.id.image_view);
+        convertBtn = (Button) findViewById(R.id.convert_button);
+        textView = (TextView) findViewById(R.id.text_view);
 
-        btn.setOnClickListener(new View.OnClickListener() {
+        getImageBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 showPictureDialog();
             }
         });
 
-
-
     }
 
+    // Alert Box for user to select between camera or gallery
     private void showPictureDialog(){
         AlertDialog.Builder pictureDialog = new AlertDialog.Builder(this);
         pictureDialog.setTitle("Select Action");
-        String[] pictureDialogItems = {
-                "Select photo from gallery",
-                "Capture photo from camera" };
+        String[] pictureDialogItems = { "Select photo from gallery", "Capture photo from camera" };
         pictureDialog.setItems(pictureDialogItems,
                 new DialogInterface.OnClickListener() {
                     @Override
@@ -115,17 +100,17 @@ public class MainActivity extends AppCompatActivity {
         pictureDialog.show();
     }
 
+    // intent to let user pick from photo gallery
     public void choosePhotoFromGallary() {
         Intent galleryIntent = new Intent(Intent.ACTION_PICK,
                 android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
 
-        startActivityForResult(galleryIntent, GALLERY);
+        startActivityForResult(galleryIntent, GALLERY_REQUEST_CODE);
     }
 
-    String mCurrentPhotoPath;
-
+    // Create an image file name that is unique to store image URI
     private File createImageFile() throws IOException {
-        // Create an image file name
+
         String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
         String imageFileName = "JPEG_" + timeStamp + "_";
         File storageDir = getExternalFilesDir(Environment.getExternalStorageDirectory() + IMAGE_DIRECTORY);
@@ -140,70 +125,31 @@ public class MainActivity extends AppCompatActivity {
         return image;
     }
 
+    // intent to allow user to click image using camera
     private void takePhotoFromCamera() {
 
-//        Intent intent = new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
-//        startActivityForResult(intent, CAMERA);
-
         Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+
         // Ensure that there's a camera activity to handle the intent
         if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
             // Create the File where the photo should go
             File photoFile = null;
+
             try {
                 photoFile = createImageFile();
             } catch (IOException ex) {
                 // Error occurred while creating the File
             }
+
             // Continue only if the File was successfully created
             if (photoFile != null) {
                 Uri photoURI = FileProvider.getUriForFile(getApplicationContext(),
                         getApplicationContext().getPackageName()+".fileprovider",
                         photoFile);
-                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI);
-                startActivityForResult(takePictureIntent, CAMERA);
+                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI); //Ensures high resolution of image
+                startActivityForResult(takePictureIntent, CAMERA_REQUEST_CODE);
             }
         }
-    }
-
-    public void getTextFromImage(final Bitmap bitmap){
-
-        final Hashtable<String, String> details = new Hashtable<String, String>();
-
-        convertBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                TextRecognizer textRecognizer = new TextRecognizer.Builder(getApplicationContext()).build();
-                if(textRecognizer.isOperational()){
-                    Log.w("TR", "is Operational");
-
-                    Frame frame = new Frame.Builder().setBitmap(bitmap).build();
-                    SparseArray<TextBlock> items = textRecognizer.detect(frame);
-                    StringBuilder string = new StringBuilder();
-                    for(int i=0; i<items.size(); i++){
-                        TextBlock item = items.valueAt(i);
-                        string.append(item.getValue());
-                        string.append("\n");
-                    }
-
-                    String full_text = string.toString();
-
-                    //find substring between 2 words
-//                    String name = extractText(full_text, "Name:","Nationality" );
-//                    details.put("name", name);
-
-                    textview.setText(full_text);
-                }else{
-                    Log.w("TR", "is not working");
-                }
-            }
-        });
-
-
-    }
-
-    public String extractText(String full_text, String left, String right){
-        return StringUtils.substringBetween(full_text, left, right);
     }
 
     @Override
@@ -213,14 +159,13 @@ public class MainActivity extends AppCompatActivity {
         if (resultCode == this.RESULT_CANCELED) {
             return;
         }
-        if (requestCode == GALLERY) {
+        if (requestCode == GALLERY_REQUEST_CODE) {
             if (data != null) {
                 Uri contentURI = data.getData();
                 try {
                     Bitmap bitmap = MediaStore.Images.Media.getBitmap(this.getContentResolver(), contentURI);
-//                    String path = saveImage(bitmap);
-                    Toast.makeText(MainActivity.this, "Image Saved!", Toast.LENGTH_SHORT).show();
-                    imageview.setImageBitmap(bitmap);
+                    Toast.makeText(MainActivity.this, "Image Imported!", Toast.LENGTH_SHORT).show();
+                    imageView.setImageBitmap(bitmap);
                     getTextFromImage(bitmap);
 
                 } catch (IOException e) {
@@ -229,24 +174,24 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-        } else if (requestCode == CAMERA) {
+        } else if (requestCode == CAMERA_REQUEST_CODE) {
             File file = new File(mCurrentPhotoPath);
             try {
                 Bitmap thumbnail = MediaStore.Images.Media.getBitmap(this.getContentResolver(), Uri.fromFile(file));
-                imageview.setImageBitmap(thumbnail);
+                imageView.setImageBitmap(thumbnail);
                 saveImage(thumbnail);
                 getTextFromImage(thumbnail);
                 Toast.makeText(MainActivity.this, "Image Saved!", Toast.LENGTH_SHORT).show();
 
             } catch (IOException e) {
                 e.printStackTrace();
+                Toast.makeText(MainActivity.this, "Failed!", Toast.LENGTH_SHORT).show();
             }
-
-//            Bitmap thumbnail = (Bitmap) data.getExtras().get("data");
 
         }
     }
 
+    //save image in gallery after clicking by camera
     public String saveImage(Bitmap myBitmap) {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         myBitmap.compress(Bitmap.CompressFormat.JPEG, 100, bytes);
@@ -276,6 +221,7 @@ public class MainActivity extends AppCompatActivity {
         return "";
     }
 
+    // request all permissions when app is started
     private void  requestMultiplePermissions(){
         Dexter.withActivity(this)
                 .withPermissions(
@@ -312,7 +258,42 @@ public class MainActivity extends AppCompatActivity {
                 .check();
     }
 
+    // get text from image
+    public void getTextFromImage(final Bitmap bitmap){
 
+        convertBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                TextRecognizer textRecognizer = new TextRecognizer.Builder(getApplicationContext()).build();
+                if(textRecognizer.isOperational()){
+                    Log.w("TR", "is Operational");
+
+                    Frame frame = new Frame.Builder().setBitmap(bitmap).build();
+                    SparseArray<TextBlock> items = textRecognizer.detect(frame);
+                    StringBuilder string = new StringBuilder();
+                    for(int i=0; i<items.size(); i++){
+                        TextBlock item = items.valueAt(i);
+                        string.append(item.getValue());
+                        string.append("\n");
+                    }
+
+                    //following string contains all the text from the image
+                    full_text = string.toString();
+                    textView.setText(full_text);
+
+                }else{
+                    Log.w("TR", "is not working");
+                }
+            }
+        });
+
+
+    }
+
+    // to extract substring between 2 substrings
+    public String extractText(String full_text, String left, String right){
+        return StringUtils.substringBetween(full_text, left, right);
+    }
 
 }
 
